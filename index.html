@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>게임형 청소당번 뽑기(개선버전)</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <style>
+    body {
+      font-family: "Pretendard", "Noto Sans KR", sans-serif;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 20% 20%, rgba(96,165,250,.4), transparent 30%),
+        radial-gradient(circle at 80% 10%, rgba(244,114,182,.35), transparent 35%),
+        linear-gradient(135deg, #020617, #172554, #312e81);
+      overflow-x: hidden;
+    }
+
+    .glass {
+      background: rgba(255,255,255,.12);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,.2);
+      box-shadow: 0 25px 70px rgba(0,0,0,.35);
+    }
+
+    .number-tile {
+      transition: .25s;
+      user-select: none;
+    }
+
+    .number-tile.active {
+      transform: scale(1.15);
+      background: linear-gradient(135deg, #facc15, #fb923c);
+      color: #111827;
+      box-shadow: 0 0 28px rgba(250,204,21,.9);
+    }
+
+    .number-tile.selected {
+      background: linear-gradient(135deg, #22c55e, #14b8a6);
+      color: white;
+      transform: scale(1.08);
+      box-shadow: 0 0 25px rgba(34,197,94,.75);
+    }
+
+    .winner-card {
+      animation: flipIn .55s ease both;
+    }
+
+    @keyframes flipIn {
+      from {
+        transform: rotateY(90deg) scale(.7);
+        opacity: 0;
+      }
+      to {
+        transform: rotateY(0) scale(1);
+        opacity: 1;
+      }
+    }
+
+    .shake {
+      animation: shake .25s infinite;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-3px); }
+      75% { transform: translateX(3px); }
+    }
+  </style>
+</head>
+
+<body class="d-flex align-items-center justify-content-center p-3 p-md-4">
+
+  <main class="glass rounded-5 p-4 p-md-5 text-white w-100" style="max-width: 850px;">
+    <section class="text-center mb-4">
+      <span class="badge rounded-pill text-bg-warning px-3 py-2 mb-3">
+        GAME MODE
+      </span>
+
+      <h1 class="fw-black display-5 mb-2">
+        🧹 청소당번 랜덤 뽑기
+      </h1>
+
+      <p class="text-white-50 mb-0">
+        1번부터 30번까지, 게임처럼 두근두근 5명을 뽑습니다.
+      </p>
+    </section>
+
+    <section class="bg-white bg-opacity-10 rounded-4 p-3 p-md-4 mb-4">
+      <div id="numberBoard" class="grid grid-cols-5 md:grid-cols-10 gap-2"></div>
+    </section>
+
+    <section class="text-center mb-4">
+      <div class="text-white-50 mb-2">현재 추첨 번호</div>
+      <div id="rouletteNumber" class="mx-auto rounded-circle bg-warning text-dark fw-black d-flex align-items-center justify-content-center shadow-lg shake"
+           style="width:110px;height:110px;font-size:48px;">
+        ?
+      </div>
+    </section>
+
+    <section class="bg-black bg-opacity-25 rounded-4 p-3 mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <strong>🏆 뽑힌 청소당번</strong>
+        <span id="countText" class="badge text-bg-light">0 / 5</span>
+      </div>
+
+      <div id="winnerList" class="grid grid-cols-5 gap-3 min-h-[80px] place-items-center">
+        <div class="text-white-50 col-span-5">아직 뽑힌 번호가 없습니다.</div>
+      </div>
+    </section>
+
+    <section class="d-flex flex-wrap justify-content-center gap-2">
+      <button id="startBtn" class="btn btn-primary btn-lg rounded-pill px-5 fw-bold">
+        🎮 추첨 시작
+      </button>
+
+      <button id="resetBtn" class="btn btn-outline-light btn-lg rounded-pill px-4">
+        🔄 초기화
+      </button>
+
+      <button id="soundBtn" class="btn btn-warning btn-lg rounded-pill px-4">
+        🔊 효과음 ON
+      </button>
+    </section>
+  </main>
+
+  <script>
+    const totalStudents = 30;
+    const pickCount = 5;
+
+    const numberBoard = document.getElementById("numberBoard");
+    const rouletteNumber = document.getElementById("rouletteNumber");
+    const winnerList = document.getElementById("winnerList");
+    const countText = document.getElementById("countText");
+
+    const startBtn = document.getElementById("startBtn");
+    const resetBtn = document.getElementById("resetBtn");
+    const soundBtn = document.getElementById("soundBtn");
+
+    let selectedNumbers = [];
+    let isDrawing = false;
+    let soundOn = true;
+
+    function createBoard() {
+      numberBoard.innerHTML = "";
+
+      for (let i = 1; i <= totalStudents; i++) {
+        const tile = document.createElement("div");
+        tile.className = "number-tile rounded-3 bg-white bg-opacity-10 text-center fw-bold py-3";
+        tile.textContent = i;
+        tile.dataset.number = i;
+        numberBoard.appendChild(tile);
+      }
+    }
+
+    function playBeep(freq = 600, duration = 80) {
+      if (!soundOn) return;
+
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      oscillator.frequency.value = freq;
+      oscillator.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      oscillator.start();
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration / 1000);
+      oscillator.stop(audioCtx.currentTime + duration / 1000);
+    }
+
+    function getRandomAvailableNumber() {
+      const available = [];
+
+      for (let i = 1; i <= totalStudents; i++) {
+        if (!selectedNumbers.includes(i)) {
+          available.push(i);
+        }
+      }
+
+      return available[Math.floor(Math.random() * available.length)];
+    }
+
+    function clearActiveTiles() {
+      document.querySelectorAll(".number-tile").forEach(tile => {
+        tile.classList.remove("active");
+      });
+    }
+
+    function highlightNumber(number) {
+      clearActiveTiles();
+
+      const tile = document.querySelector(`[data-number="${number}"]`);
+      if (tile) {
+        tile.classList.add("active");
+      }
+
+      rouletteNumber.textContent = number;
+    }
+
+    function markSelected(number) {
+      const tile = document.querySelector(`[data-number="${number}"]`);
+
+      if (tile) {
+        tile.classList.remove("active");
+        tile.classList.add("selected");
+      }
+    }
+
+    function updateWinnerList() {
+      winnerList.innerHTML = "";
+
+      selectedNumbers.forEach((num, index) => {
+        const card = document.createElement("div");
+        card.className =
+          "winner-card rounded-4 bg-gradient-to-br from-emerald-400 to-cyan-400 " +
+          "text-slate-900 fw-black d-flex align-items-center justify-content-center shadow-lg";
+        card.style.width = "70px";
+        card.style.height = "70px";
+        card.style.fontSize = "28px";
+        card.style.animationDelay = `${index * 0.08}s`;
+        card.textContent = num;
+        winnerList.appendChild(card);
+      });
+
+      countText.textContent = `${selectedNumbers.length} / ${pickCount}`;
+    }
+
+    function drawOneNumber(round) {
+      return new Promise(resolve => {
+        let speed = 45;
+        let spinCount = 0;
+        const maxSpin = 25 + round * 8;
+
+        const interval = setInterval(() => {
+          const randomNum = getRandomAvailableNumber();
+          highlightNumber(randomNum);
+          playBeep(500 + spinCount * 15, 40);
+
+          spinCount++;
+
+          if (spinCount >= maxSpin) {
+            clearInterval(interval);
+
+            const winner = getRandomAvailableNumber();
+            selectedNumbers.push(winner);
+
+            highlightNumber(winner);
+            markSelected(winner);
+            updateWinnerList();
+            playBeep(900, 180);
+
+            setTimeout(resolve, 650);
+          }
+        }, speed);
+      });
+    }
+
+    async function startDrawing() {
+      if (isDrawing) return;
+
+      resetGame(false);
+
+      isDrawing = true;
+      startBtn.disabled = true;
+      resetBtn.disabled = true;
+      startBtn.textContent = "🎲 추첨 중...";
+
+      for (let i = 1; i <= pickCount; i++) {
+        await drawOneNumber(i);
+      }
+
+      isDrawing = false;
+      startBtn.disabled = false;
+      resetBtn.disabled = false;
+      startBtn.textContent = "🎮 다시 뽑기";
+
+      const sorted = [...selectedNumbers].sort((a, b) => a - b);
+
+      Swal.fire({
+        title: "오늘의 청소당번 발표!",
+        html: `
+          <div style="font-size:30px;font-weight:900;margin:22px 0;">
+            ${sorted.map(n => `<span style="display:inline-block;margin:6px;padding:10px 14px;border-radius:16px;background:#facc15;color:#111827;">${n}번</span>`).join("")}
+          </div>
+          <p style="color:#64748b;">모두 수고해 주세요 🧼✨</p>
+        `,
+        icon: "success",
+        confirmButtonText: "확인",
+        confirmButtonColor: "#2563eb"
+      });
+    }
+
+    function resetGame(showAlert = true) {
+      selectedNumbers = [];
+      rouletteNumber.textContent = "?";
+      clearActiveTiles();
+
+      document.querySelectorAll(".number-tile").forEach(tile => {
+        tile.classList.remove("selected");
+      });
+
+      winnerList.innerHTML = `<div class="text-white-50 col-span-5">아직 뽑힌 번호가 없습니다.</div>`;
+      countText.textContent = `0 / ${pickCount}`;
+
+      if (showAlert) {
+        Swal.fire({
+          title: "초기화 완료",
+          text: "다시 추첨할 준비가 되었습니다.",
+          icon: "info",
+          confirmButtonText: "확인",
+          confirmButtonColor: "#2563eb"
+        });
+      }
+    }
+
+    startBtn.addEventListener("click", startDrawing);
+
+    resetBtn.addEventListener("click", () => {
+      if (!isDrawing) resetGame(true);
+    });
+
+    soundBtn.addEventListener("click", () => {
+      soundOn = !soundOn;
+      soundBtn.textContent = soundOn ? "🔊 효과음 ON" : "🔇 효과음 OFF";
+      soundBtn.classList.toggle("btn-warning", soundOn);
+      soundBtn.classList.toggle("btn-secondary", !soundOn);
+    });
+
+    createBoard();
+  </script>
+
+</body>
+</html>
